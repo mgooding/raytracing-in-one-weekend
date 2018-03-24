@@ -21,7 +21,7 @@ public class RenderToViewport : MonoBehaviour
             new SphereRecord {Center = new Vector3(0.0f, -100.5f, -1.0f), Radius = 100.0f}
         };
 
-        RenderToBytes(_texture.width, _texture.height, 10, spheres);
+        RenderToBytes(_texture.width, _texture.height, 32, spheres);
         _texture.LoadRawTextureData(_textureBytes);
         _texture.Apply();
         
@@ -109,12 +109,15 @@ public class RenderToViewport : MonoBehaviour
         }
     }
 
-    private Vector3 ColorFromRay(Ray ray, IEnumerable<SphereRecord> spheres)
+    private Vector3 ColorFromRay(Ray ray, SphereRecord[] spheres)
     {
         HitRecord hitRecord;
-        HitSphereArray(spheres, ray, 0.0f, float.MaxValue, out hitRecord);
+        HitSphereArray(spheres, ray, 0.001f, float.MaxValue, out hitRecord);
         if (hitRecord != null)
-            return 0.5f * (hitRecord.Normal + Vector3.one);
+        {
+            Vector3 target = hitRecord.Point + hitRecord.Normal + Random.insideUnitSphere;
+            return 0.5f * ColorFromRay(new Ray(hitRecord.Point, target - hitRecord.Point), spheres);
+        }
 
         Vector3 normalizedDir = ray.direction.normalized;
         float t = 0.5f * (normalizedDir.y + 1.0f);
@@ -140,6 +143,7 @@ public class RenderToViewport : MonoBehaviour
                     rgb += ColorFromRay(myCamera.GetRay(u, v), spheres);   
                 }
                 rgb /= spp;
+                rgb = new Vector3(Mathf.Sqrt(rgb.x), Mathf.Sqrt(rgb.y), Mathf.Sqrt(rgb.z));
 
                 _textureBytes[bytesOffset++] = (byte)(255.99f * rgb.x);
                 _textureBytes[bytesOffset++] = (byte)(255.99f * rgb.y);
