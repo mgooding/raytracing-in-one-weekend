@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 
 public class RenderToViewport : MonoBehaviour
@@ -8,13 +9,11 @@ public class RenderToViewport : MonoBehaviour
     private Texture2D _texture;
     private byte[] _textureBytes;
 
-    private void OnRenderImage(RenderTexture src, RenderTexture dest)
+    private void Start()
     {
-        if (_texture == null || _texture.width != src.width || _texture.height != src.height)
-        {
-            _texture = new Texture2D(src.width, src.height, TextureFormat.RGBA32, false, false);
-            _textureBytes = new byte[src.width * src.height * 4];
-        }
+        int width = Camera.main.pixelWidth, height = Camera.main.pixelHeight;
+        _texture = new Texture2D(width, height, TextureFormat.RGBA32, false, false);
+        _textureBytes = new byte[width * height * 4];
 
         var spheres = new SphereRecord[]
         {
@@ -22,13 +21,17 @@ public class RenderToViewport : MonoBehaviour
             new SphereRecord {Center = new Vector3(0.0f, -100.5f, -1.0f), Radius = 100.0f}
         };
 
-        RenderToBytes(_texture.width, _texture.height, spheres);
+        RenderToBytes(_texture.width, _texture.height, 10, spheres);
         _texture.LoadRawTextureData(_textureBytes);
         _texture.Apply();
+        
+        if (false)
+            File.WriteAllBytes(@"D:\renderTest.png", _texture.EncodeToPNG());
+    }
 
+    private void OnRenderImage(RenderTexture src, RenderTexture dest)
+    {
         Graphics.Blit(_texture, dest);
-
-        Debug.Break(); // so slow, just break after a frame to maintain interactivity in editor
     }
 
     private class HitRecord
@@ -42,6 +45,19 @@ public class RenderToViewport : MonoBehaviour
     {
         public Vector3 Center;
         public float Radius;
+    }
+
+    private class MyCamera
+    {
+        private Vector3 _lowerLeft = new Vector3(-2.0f, -1.0f, -1.0f);
+        private Vector3 _horizontal = new Vector3(4.0f, 0.0f, 0.0f);
+        private Vector3 _vertical = new Vector3(0.0f, 2.0f, 0.0f);
+        private Vector3 _origin = Vector3.zero;
+
+        public Ray GetRay(float u, float v)
+        {
+            return new Ray(_origin, _lowerLeft + u * _horizontal + v * _vertical);
+        }
     }
 
     private void HitSphere(SphereRecord sphere, Ray ray, float tMin, float tMax, out HitRecord hitRecord)
@@ -105,23 +121,25 @@ public class RenderToViewport : MonoBehaviour
         return (1.0f - t) * Vector3.one + t * new Vector3(0.5f, 0.7f, 1.0f);
     }
 
-    private void RenderToBytes(int width, int height, SphereRecord[] spheres)
+    private void RenderToBytes(int width, int height, int spp, SphereRecord[] spheres)
     {
         int bytesOffset = 0;
 
-        Vector3 lowerLeft = new Vector3(-2.0f, -1.0f, -1.0f);
-        Vector3 horizontal = new Vector3(4.0f, 0.0f, 0.0f);
-        Vector3 vertical = new Vector3(0.0f, 2.0f, 0.0f);
-        Vector3 origin = Vector3.zero;
+        var myCamera = new MyCamera();
 
         for (int j = 0; j < height; ++j)
         {
             for (int i = 0; i < width; ++i)
             {
-                float u = (float) i / (float) width;
-                float v = (float) j / (float) height;
+                Vector3 rgb = Vector3.zero;
+                for (int k = 0; k < spp; ++k)
+                {
+                    float u = ((float)i + Random.Range(0.0f, 0.999999f)) / (float)width;
+                    float v = ((float)j + Random.Range(0.0f, 0.999999f)) / (float)height;
 
-                Vector3 rgb = ColorFromRay(new Ray(origin, lowerLeft + u * horizontal + v * vertical), spheres);
+                    rgb += ColorFromRay(myCamera.GetRay(u, v), spheres);   
+                }
+                rgb /= spp;
 
                 _textureBytes[bytesOffset++] = (byte)(255.99f * rgb.x);
                 _textureBytes[bytesOffset++] = (byte)(255.99f * rgb.y);
