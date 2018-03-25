@@ -17,14 +17,54 @@ public class RenderToViewport : MonoBehaviour
 
         var spheres = new SphereRecord[]
         {
-            new SphereRecord {Center = new Vector3(0.0f, 0.0f, -1.0f), Radius = 0.5f},
-            new SphereRecord {Center = new Vector3(0.0f, -100.5f, -1.0f), Radius = 100.0f}
+            new SphereRecord
+            {
+                Center = new Vector3(0.0f, 0.0f, -1.0f),
+                Radius = 0.5f,
+                Material = new MyMaterial
+                {
+                    MaterialType = MyMaterialType.Lambertian,
+                    Albedo = new Vector3(0.8f, 0.3f, 0.3f)
+                }
+            },
+            new SphereRecord
+            {
+                Center = new Vector3(0.0f, -100.5f, -1.0f),
+                Radius = 100.0f,
+                Material = new MyMaterial
+                {
+                    MaterialType = MyMaterialType.Lambertian,
+                    Albedo = new Vector3(0.8f, 0.8f, 0.0f)
+                }
+            },
+            new SphereRecord
+            {
+                Center = new Vector3(1.0f, 0.0f, -1.0f),
+                Radius = 0.5f,
+                Material = new MyMaterial
+                {
+                    MaterialType = MyMaterialType.Metal,
+                    Albedo = new Vector3(0.8f, 0.6f, 0.2f),
+                    Fuzz = 0.3f
+                }
+            },
+            new SphereRecord
+            {
+                Center = new Vector3(-1.0f, 0.0f, -1.0f),
+                Radius = 0.5f,
+                Material = new MyMaterial
+                {
+                    MaterialType = MyMaterialType.Metal,
+                    Albedo = new Vector3(0.8f, 0.8f, 0.8f),
+                    Fuzz = 1.0f,
+                }
+            }
         };
 
         RenderToBytes(_texture.width, _texture.height, 32, spheres);
         _texture.LoadRawTextureData(_textureBytes);
         _texture.Apply();
-        
+
         if (false)
             File.WriteAllBytes(@"D:\renderTest.png", _texture.EncodeToPNG());
     }
@@ -39,12 +79,14 @@ public class RenderToViewport : MonoBehaviour
         public float T;
         public Vector3 Point;
         public Vector3 Normal;
+        public MyMaterial Material;
     }
 
     private struct SphereRecord
     {
         public Vector3 Center;
         public float Radius;
+        public MyMaterial Material;
     }
 
     private class MyCamera
@@ -57,6 +99,42 @@ public class RenderToViewport : MonoBehaviour
         public Ray GetRay(float u, float v)
         {
             return new Ray(_origin, _lowerLeft + u * _horizontal + v * _vertical);
+        }
+    }
+
+    private enum MyMaterialType
+    {
+        Lambertian,
+        Metal
+    }
+
+    private class MyMaterial
+    {
+        public MyMaterialType MaterialType;
+        public Vector3 Albedo;
+        public float Fuzz;
+
+        public bool Scatter(Ray ray, HitRecord hitRecord, ref Vector3 attenuation, ref Ray scattered)
+        {
+            switch (MaterialType)
+            {
+                case MyMaterialType.Lambertian:
+                    {
+                        Vector3 target = hitRecord.Point + hitRecord.Normal + Random.insideUnitSphere;
+                        scattered = new Ray(hitRecord.Point, target - hitRecord.Point);
+                        attenuation = Albedo;
+                        return true;
+                    }
+                case MyMaterialType.Metal:
+                    {
+                        Vector3 reflection = Vector3.Reflect(ray.direction.normalized, hitRecord.Normal);
+                        scattered = new Ray(hitRecord.Point, reflection + Fuzz * Random.insideUnitSphere);
+                        attenuation = Albedo;
+                        return Vector3.Dot(scattered.direction, hitRecord.Normal) > 0.0f;
+                    }
+            }
+
+            return false;
         }
     }
 
@@ -77,7 +155,13 @@ public class RenderToViewport : MonoBehaviour
         if (temp < tMax && temp > tMin)
         {
             Vector3 point = ray.GetPoint(temp);
-            hitRecord = new HitRecord() { T = temp, Point = point, Normal = (point - sphere.Center) / sphere.Radius };
+            hitRecord = new HitRecord()
+            {
+                T = temp,
+                Point = point,
+                Normal = (point - sphere.Center) / sphere.Radius,
+                Material = sphere.Material,
+            };
             return;
         }
 
@@ -85,7 +169,13 @@ public class RenderToViewport : MonoBehaviour
         if (temp < tMax && temp > tMin)
         {
             Vector3 point = ray.GetPoint(temp);
-            hitRecord = new HitRecord() { T = temp, Point = point, Normal = (point - sphere.Center) / sphere.Radius };
+            hitRecord = new HitRecord()
+            {
+                T = temp,
+                Point = point,
+                Normal = (point - sphere.Center) / sphere.Radius,
+                Material = sphere.Material,
+            };
             return;
         }
 
@@ -109,14 +199,18 @@ public class RenderToViewport : MonoBehaviour
         }
     }
 
-    private Vector3 ColorFromRay(Ray ray, SphereRecord[] spheres)
+    private Vector3 ColorFromRay(Ray ray, SphereRecord[] spheres, int depth)
     {
         HitRecord hitRecord;
         HitSphereArray(spheres, ray, 0.001f, float.MaxValue, out hitRecord);
         if (hitRecord != null)
         {
-            Vector3 target = hitRecord.Point + hitRecord.Normal + Random.insideUnitSphere;
-            return 0.5f * ColorFromRay(new Ray(hitRecord.Point, target - hitRecord.Point), spheres);
+            var scattered = new Ray();
+            Vector3 attenuation = Vector3.zero;
+            if (depth < 50 && hitRecord.Material.Scatter(ray, hitRecord, ref attenuation, ref scattered))
+                return Vector3.Scale(attenuation, ColorFromRay(scattered, spheres, depth + 1));
+            else
+                return Vector3.zero;
         }
 
         Vector3 normalizedDir = ray.direction.normalized;
@@ -140,7 +234,7 @@ public class RenderToViewport : MonoBehaviour
                     float u = ((float)i + Random.Range(0.0f, 0.999999f)) / (float)width;
                     float v = ((float)j + Random.Range(0.0f, 0.999999f)) / (float)height;
 
-                    rgb += ColorFromRay(myCamera.GetRay(u, v), spheres);   
+                    rgb += ColorFromRay(myCamera.GetRay(u, v), spheres, 0);
                 }
                 rgb /= spp;
                 rgb = new Vector3(Mathf.Sqrt(rgb.x), Mathf.Sqrt(rgb.y), Mathf.Sqrt(rgb.z));
