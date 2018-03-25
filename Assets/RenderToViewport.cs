@@ -1,7 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
-using UnityEditor;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 public class RenderToViewport : MonoBehaviour
 {
@@ -16,7 +17,134 @@ public class RenderToViewport : MonoBehaviour
         _texture = new Texture2D(width, height, TextureFormat.RGBA32, false, false);
         _textureBytes = new byte[width * height * 4];
 
-        var spheres = new SphereRecord[]
+        SphereRecord[] scene = GetRandomScene();
+
+        DateTime start = DateTime.UtcNow;
+        RenderToBytes(_texture.width, _texture.height, 10, scene);
+        Debug.Log(DateTime.UtcNow - start);
+
+        _texture.LoadRawTextureData(_textureBytes);
+        _texture.Apply();
+
+        if (false)
+            File.WriteAllBytes(@"D:\renderTest.png", _texture.EncodeToPNG());
+    }
+
+    private void OnRenderImage(RenderTexture src, RenderTexture dest)
+    {
+        Graphics.Blit(_texture, dest);
+    }
+
+    private SphereRecord[] GetRandomScene()
+    {
+        var result = new List<SphereRecord>
+        {
+            new SphereRecord // ground plane
+            {
+                Center = new Vector3(0, -1000.0f, 0.0f),
+                Radius = 1000.0f,
+                Material = new MyMaterial
+                {
+                    MaterialType = MyMaterialType.Lambertian,
+                    Albedo = new Vector3(0.5f, 0.5f, 0.5f)
+                }
+            }
+        };
+
+        var centerTest = new Vector3(4.0f, 0.2f, 0.0f);
+
+        for (int a = -11; a < 11; ++a)
+        {
+            for (int b = -11; b < 11; ++b)
+            {
+                float chooseMat = Random.value;
+                var center = new Vector3(a + 0.9f*Random.value, 0.2f, b + 0.9f * Random.value);
+                if ((center - centerTest).magnitude > 0.9f)
+                {
+                    if (chooseMat < 0.8f)
+                    {
+                        result.Add(new SphereRecord()
+                        {
+                            Center = center,
+                            Radius = 0.2f,
+                            Material = new MyMaterial()
+                            {
+                                MaterialType = MyMaterialType.Lambertian,
+                                Albedo = new Vector3(Random.value * Random.value, Random.value * Random.value, Random.value * Random.value),
+                            }
+                        });
+                    }
+                    else if (chooseMat < 0.95f)
+                    {
+                        result.Add(new SphereRecord()
+                        {
+                            Center = new Vector3(4.0f, 1.0f, 0.0f),
+                            Radius = 0.2f,
+                            Material = new MyMaterial()
+                            {
+                                MaterialType = MyMaterialType.Metal,
+                                Albedo = new Vector3(0.5f * (1.0f + Random.value), 0.5f * (1.0f + Random.value), 0.5f * (1.0f + Random.value)),
+                                Fuzz = 0.5f * Random.value,
+                            }
+                        });
+                    }
+                    else
+                    {
+                        result.Add(new SphereRecord()
+                        {
+                            Center = Vector3.up,
+                            Radius = 0.2f,
+                            Material = new MyMaterial()
+                            {
+                                MaterialType = MyMaterialType.Dielectric,
+                                RefractionIndex = 1.5f,
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
+        result.Add(new SphereRecord()
+        {
+            Center = Vector3.up,
+            Radius = 1.0f,
+            Material = new MyMaterial()
+            {
+                MaterialType = MyMaterialType.Dielectric,
+                RefractionIndex = 1.5f,
+            }
+        });
+
+        result.Add(new SphereRecord()
+        {
+            Center = new Vector3(-4.0f, 1.0f, 0.0f),
+            Radius = 1.0f,
+            Material = new MyMaterial()
+            {
+                MaterialType = MyMaterialType.Lambertian,
+                Albedo = new Vector3(0.4f, 0.2f, 0.1f),
+            }
+        });
+
+        result.Add(new SphereRecord()
+        {
+            Center = new Vector3(4.0f, 1.0f, 0.0f),
+            Radius = 1.0f,
+            Material = new MyMaterial()
+            {
+                MaterialType = MyMaterialType.Metal,
+                Albedo = new Vector3(0.7f, 0.6f, 0.5f),
+                Fuzz = 0.0f,
+            }
+        });
+
+        return result.ToArray();
+    }
+
+    private SphereRecord[] GetDefaultScene()
+    {
+        return new SphereRecord[]
         {
             new SphereRecord
             {
@@ -70,18 +198,6 @@ public class RenderToViewport : MonoBehaviour
                 }
             }
         };
-
-        RenderToBytes(_texture.width, _texture.height, 32, spheres);
-        _texture.LoadRawTextureData(_textureBytes);
-        _texture.Apply();
-
-        if (false)
-            File.WriteAllBytes(@"D:\renderTest.png", _texture.EncodeToPNG());
-    }
-
-    private void OnRenderImage(RenderTexture src, RenderTexture dest)
-    {
-        Graphics.Blit(_texture, dest);
     }
 
     private class HitRecord
@@ -314,10 +430,10 @@ public class RenderToViewport : MonoBehaviour
     {
         int bytesOffset = 0;
 
-        var lookFrom = new Vector3(3.0f, 3.0f, 2.0f);
-        var lookAt = new Vector3(0.0f, 0.0f, -1.0f);
-        float distToFocus = (lookFrom - lookAt).magnitude;
-        float aperture = 2.0f;
+        var lookFrom = new Vector3(13.0f, 2.0f, 3.0f);
+        var lookAt = Vector3.zero;
+        float distToFocus = 10.0f;
+        float aperture = 0.1f;
 
         var myCamera = new MyCamera(lookFrom, lookAt, Vector3.up, 20.0f, (float)width / (float)height, aperture, distToFocus);
 
