@@ -6,8 +6,6 @@ using Random = UnityEngine.Random;
 
 public class RenderToViewport : MonoBehaviour
 {
-    public Texture2D TexturePreview;
-
     private Texture2D _texture;
     private byte[] _textureBytes;
 
