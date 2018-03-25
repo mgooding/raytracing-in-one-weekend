@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.IO;
+using UnityEditor;
 using UnityEngine;
 
 public class RenderToViewport : MonoBehaviour
@@ -24,7 +25,7 @@ public class RenderToViewport : MonoBehaviour
                 Material = new MyMaterial
                 {
                     MaterialType = MyMaterialType.Lambertian,
-                    Albedo = new Vector3(0.8f, 0.3f, 0.3f)
+                    Albedo = new Vector3(0.1f, 0.2f, 0.5f)
                 }
             },
             new SphereRecord
@@ -45,7 +46,7 @@ public class RenderToViewport : MonoBehaviour
                 {
                     MaterialType = MyMaterialType.Metal,
                     Albedo = new Vector3(0.8f, 0.6f, 0.2f),
-                    Fuzz = 0.3f
+                    Fuzz = 0.0f
                 }
             },
             new SphereRecord
@@ -54,9 +55,18 @@ public class RenderToViewport : MonoBehaviour
                 Radius = 0.5f,
                 Material = new MyMaterial
                 {
-                    MaterialType = MyMaterialType.Metal,
-                    Albedo = new Vector3(0.8f, 0.8f, 0.8f),
-                    Fuzz = 1.0f,
+                    MaterialType = MyMaterialType.Dielectric,
+                    RefractionIndex = 1.5f,
+                }
+            },
+            new SphereRecord
+            {
+                Center = new Vector3(-1.0f, 0.0f, -1.0f),
+                Radius = -0.45f,
+                Material = new MyMaterial
+                {
+                    MaterialType = MyMaterialType.Dielectric,
+                    RefractionIndex = 1.5f,
                 }
             }
         };
@@ -105,7 +115,8 @@ public class RenderToViewport : MonoBehaviour
     private enum MyMaterialType
     {
         Lambertian,
-        Metal
+        Metal,
+        Dielectric,
     }
 
     private class MyMaterial
@@ -113,28 +124,84 @@ public class RenderToViewport : MonoBehaviour
         public MyMaterialType MaterialType;
         public Vector3 Albedo;
         public float Fuzz;
+        public float RefractionIndex;
 
         public bool Scatter(Ray ray, HitRecord hitRecord, ref Vector3 attenuation, ref Ray scattered)
         {
             switch (MaterialType)
             {
                 case MyMaterialType.Lambertian:
-                    {
-                        Vector3 target = hitRecord.Point + hitRecord.Normal + Random.insideUnitSphere;
-                        scattered = new Ray(hitRecord.Point, target - hitRecord.Point);
-                        attenuation = Albedo;
-                        return true;
-                    }
+                {
+                    Vector3 target = hitRecord.Point + hitRecord.Normal + Random.insideUnitSphere;
+                    scattered = new Ray(hitRecord.Point, target - hitRecord.Point);
+                    attenuation = Albedo;
+                    return true;
+                }
                 case MyMaterialType.Metal:
+                {
+                    Vector3 reflection = Vector3.Reflect(ray.direction.normalized, hitRecord.Normal);
+                    scattered = new Ray(hitRecord.Point, reflection + Fuzz * Random.insideUnitSphere);
+                    attenuation = Albedo;
+                    return Vector3.Dot(scattered.direction, hitRecord.Normal) > 0.0f;
+                }
+                case MyMaterialType.Dielectric:
+                {
+                    Vector3 outwardNormal;
+                    Vector3 reflection = Vector3.Reflect(ray.direction, hitRecord.Normal);
+                    float niOverNt;
+                    attenuation = Vector3.one;
+                    Vector3 refraction = Vector3.zero;
+                    float cosine;
+
+                    if (Vector3.Dot(ray.direction, hitRecord.Normal) > 0.0f)
                     {
-                        Vector3 reflection = Vector3.Reflect(ray.direction.normalized, hitRecord.Normal);
-                        scattered = new Ray(hitRecord.Point, reflection + Fuzz * Random.insideUnitSphere);
-                        attenuation = Albedo;
-                        return Vector3.Dot(scattered.direction, hitRecord.Normal) > 0.0f;
+                        outwardNormal = hitRecord.Normal * -1.0f;
+                        niOverNt = RefractionIndex;
+                        cosine = RefractionIndex * Vector3.Dot(ray.direction, hitRecord.Normal) /
+                                 ray.direction.magnitude;
                     }
+                    else
+                    {
+                        outwardNormal = hitRecord.Normal;
+                        niOverNt = 1.0f / RefractionIndex;
+                        cosine = -Vector3.Dot(ray.direction, hitRecord.Normal) / ray.direction.magnitude;
+                    }
+
+                    float reflectionProb;
+                    if (Refract(ray.direction, outwardNormal, niOverNt, ref refraction))
+                        reflectionProb = Schlick(cosine);
+                    else
+                        reflectionProb = 1.0f;
+
+                    if (Random.Range(0.0f, 0.999999f) < reflectionProb)
+                        scattered = new Ray(hitRecord.Point, reflection);
+                    else
+                        scattered = new Ray(hitRecord.Point, refraction);
+
+                    return true;
+                }
             }
 
             return false;
+        }
+
+        private float Schlick(float cosine)
+        {
+            float r0 = (1 - RefractionIndex) / (1 + RefractionIndex);
+            r0 = r0 * r0;
+            return r0 + (1 - r0) * Mathf.Pow(1.0f - cosine, 5.0f);
+        }
+
+        private bool Refract(Vector3 vector, Vector3 normal, float niOverNt, ref Vector3 refracted)
+        {
+            vector.Normalize();
+            float dt = Vector3.Dot(vector, normal);
+            float discriminant = 1.0f - niOverNt * niOverNt * (1 - dt * dt);
+            if (discriminant <= 0.0f)
+                return false;
+
+            refracted = niOverNt * (vector - normal * dt) - normal * Mathf.Sqrt(discriminant);
+            return true;
         }
     }
 
