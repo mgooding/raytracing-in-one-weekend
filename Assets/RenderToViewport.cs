@@ -38,37 +38,37 @@ public class RenderToViewport : MonoBehaviour
                     Albedo = new Vector3(0.8f, 0.8f, 0.0f)
                 }
             },
-            new SphereRecord
-            {
-                Center = new Vector3(1.0f, 0.0f, -1.0f),
-                Radius = 0.5f,
-                Material = new MyMaterial
-                {
-                    MaterialType = MyMaterialType.Metal,
-                    Albedo = new Vector3(0.8f, 0.6f, 0.2f),
-                    Fuzz = 0.0f
-                }
-            },
-            new SphereRecord
-            {
-                Center = new Vector3(-1.0f, 0.0f, -1.0f),
-                Radius = 0.5f,
-                Material = new MyMaterial
-                {
-                    MaterialType = MyMaterialType.Dielectric,
-                    RefractionIndex = 1.5f,
-                }
-            },
-            new SphereRecord
-            {
-                Center = new Vector3(-1.0f, 0.0f, -1.0f),
-                Radius = -0.45f,
-                Material = new MyMaterial
-                {
-                    MaterialType = MyMaterialType.Dielectric,
-                    RefractionIndex = 1.5f,
-                }
-            }
+//            new SphereRecord
+//            {
+//                Center = new Vector3(1.0f, 0.0f, -1.0f),
+//                Radius = 0.5f,
+//                Material = new MyMaterial
+//                {
+//                    MaterialType = MyMaterialType.Metal,
+//                    Albedo = new Vector3(0.8f, 0.6f, 0.2f),
+//                    Fuzz = 0.0f
+//                }
+//            },
+//            new SphereRecord
+//            {
+//                Center = new Vector3(-1.0f, 0.0f, -1.0f),
+//                Radius = 0.5f,
+//                Material = new MyMaterial
+//                {
+//                    MaterialType = MyMaterialType.Dielectric,
+//                    RefractionIndex = 1.5f,
+//                }
+//            },
+//            new SphereRecord
+//            {
+//                Center = new Vector3(-1.0f, 0.0f, -1.0f),
+//                Radius = -0.45f,
+//                Material = new MyMaterial
+//                {
+//                    MaterialType = MyMaterialType.Dielectric,
+//                    RefractionIndex = 1.5f,
+//                }
+//            }
         };
 
         RenderToBytes(_texture.width, _texture.height, 32, spheres);
@@ -101,14 +101,31 @@ public class RenderToViewport : MonoBehaviour
 
     private class MyCamera
     {
-        private Vector3 _lowerLeft = new Vector3(-2.0f, -1.0f, -1.0f);
-        private Vector3 _horizontal = new Vector3(4.0f, 0.0f, 0.0f);
-        private Vector3 _vertical = new Vector3(0.0f, 2.0f, 0.0f);
-        private Vector3 _origin = Vector3.zero;
+        private Vector3 _lowerLeft;
+        private Vector3 _horizontal;
+        private Vector3 _vertical;
+        private Vector3 _origin;
+
+        public MyCamera(Vector3 lookFrom, Vector3 lookAt, Vector3 up, float vfov, float aspect)
+        {
+            float theta = vfov * Mathf.Deg2Rad;
+            float halfHeight = Mathf.Tan(theta / 2.0f);
+            float halfWidth = aspect * halfHeight;
+
+            _origin = lookFrom;
+
+            Vector3 w = (lookFrom - lookAt).normalized;
+            Vector3 u = Vector3.Cross(up, w).normalized;
+            Vector3 v = Vector3.Cross(w, u);
+
+            _lowerLeft = _origin - halfWidth * u - halfHeight * v - w;
+            _horizontal = 2.0f * halfWidth * u;
+            _vertical = 2.0f * halfHeight * v;
+        }
 
         public Ray GetRay(float u, float v)
         {
-            return new Ray(_origin, _lowerLeft + u * _horizontal + v * _vertical);
+            return new Ray(_origin, _lowerLeft + u * _horizontal + v * _vertical - _origin);
         }
     }
 
@@ -289,7 +306,8 @@ public class RenderToViewport : MonoBehaviour
     {
         int bytesOffset = 0;
 
-        var myCamera = new MyCamera();
+        var myCamera = new MyCamera(new Vector3(-2.0f, 2.0f, 1.0f), new Vector3(0.0f, 0.0f, -1.0f), Vector3.up,
+            90.0f, (float)width / (float)height);
 
         for (int j = 0; j < height; ++j)
         {
