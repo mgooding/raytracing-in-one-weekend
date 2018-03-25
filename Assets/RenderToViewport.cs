@@ -38,37 +38,37 @@ public class RenderToViewport : MonoBehaviour
                     Albedo = new Vector3(0.8f, 0.8f, 0.0f)
                 }
             },
-//            new SphereRecord
-//            {
-//                Center = new Vector3(1.0f, 0.0f, -1.0f),
-//                Radius = 0.5f,
-//                Material = new MyMaterial
-//                {
-//                    MaterialType = MyMaterialType.Metal,
-//                    Albedo = new Vector3(0.8f, 0.6f, 0.2f),
-//                    Fuzz = 0.0f
-//                }
-//            },
-//            new SphereRecord
-//            {
-//                Center = new Vector3(-1.0f, 0.0f, -1.0f),
-//                Radius = 0.5f,
-//                Material = new MyMaterial
-//                {
-//                    MaterialType = MyMaterialType.Dielectric,
-//                    RefractionIndex = 1.5f,
-//                }
-//            },
-//            new SphereRecord
-//            {
-//                Center = new Vector3(-1.0f, 0.0f, -1.0f),
-//                Radius = -0.45f,
-//                Material = new MyMaterial
-//                {
-//                    MaterialType = MyMaterialType.Dielectric,
-//                    RefractionIndex = 1.5f,
-//                }
-//            }
+            new SphereRecord
+            {
+                Center = new Vector3(1.0f, 0.0f, -1.0f),
+                Radius = 0.5f,
+                Material = new MyMaterial
+                {
+                    MaterialType = MyMaterialType.Metal,
+                    Albedo = new Vector3(0.8f, 0.6f, 0.2f),
+                    Fuzz = 0.0f
+                }
+            },
+            new SphereRecord
+            {
+                Center = new Vector3(-1.0f, 0.0f, -1.0f),
+                Radius = 0.5f,
+                Material = new MyMaterial
+                {
+                    MaterialType = MyMaterialType.Dielectric,
+                    RefractionIndex = 1.5f,
+                }
+            },
+            new SphereRecord
+            {
+                Center = new Vector3(-1.0f, 0.0f, -1.0f),
+                Radius = -0.45f,
+                Material = new MyMaterial
+                {
+                    MaterialType = MyMaterialType.Dielectric,
+                    RefractionIndex = 1.5f,
+                }
+            }
         };
 
         RenderToBytes(_texture.width, _texture.height, 32, spheres);
@@ -105,27 +105,35 @@ public class RenderToViewport : MonoBehaviour
         private Vector3 _horizontal;
         private Vector3 _vertical;
         private Vector3 _origin;
+        private Vector3 _u;
+        private Vector3 _v;
+        private Vector3 _w;
+        private float _lensRadius;
 
-        public MyCamera(Vector3 lookFrom, Vector3 lookAt, Vector3 up, float vfov, float aspect)
+        public MyCamera(Vector3 lookFrom, Vector3 lookAt, Vector3 up, float vfov, float aspect, float aperture, float focusDist)
         {
+            _lensRadius = aperture / 2.0f;
+
             float theta = vfov * Mathf.Deg2Rad;
             float halfHeight = Mathf.Tan(theta / 2.0f);
             float halfWidth = aspect * halfHeight;
 
             _origin = lookFrom;
 
-            Vector3 w = (lookFrom - lookAt).normalized;
-            Vector3 u = Vector3.Cross(up, w).normalized;
-            Vector3 v = Vector3.Cross(w, u);
+            _w = (lookFrom - lookAt).normalized;
+            _u = Vector3.Cross(up, _w).normalized;
+            _v = Vector3.Cross(_w, _u);
 
-            _lowerLeft = _origin - halfWidth * u - halfHeight * v - w;
-            _horizontal = 2.0f * halfWidth * u;
-            _vertical = 2.0f * halfHeight * v;
+            _lowerLeft = _origin - halfWidth * focusDist * _u - halfHeight * focusDist * _v - focusDist * _w;
+            _horizontal = 2.0f * halfWidth * focusDist * _u;
+            _vertical = 2.0f * halfHeight * focusDist * _v;
         }
 
-        public Ray GetRay(float u, float v)
+        public Ray GetRay(float s, float t)
         {
-            return new Ray(_origin, _lowerLeft + u * _horizontal + v * _vertical - _origin);
+            Vector3 rd = _lensRadius * Random.insideUnitCircle;
+            Vector3 offset = _u * rd.x + _v * rd.y;
+            return new Ray(_origin + offset, _lowerLeft + s * _horizontal + t * _vertical - _origin - offset);
         }
     }
 
@@ -306,8 +314,12 @@ public class RenderToViewport : MonoBehaviour
     {
         int bytesOffset = 0;
 
-        var myCamera = new MyCamera(new Vector3(-2.0f, 2.0f, 1.0f), new Vector3(0.0f, 0.0f, -1.0f), Vector3.up,
-            90.0f, (float)width / (float)height);
+        var lookFrom = new Vector3(3.0f, 3.0f, 2.0f);
+        var lookAt = new Vector3(0.0f, 0.0f, -1.0f);
+        float distToFocus = (lookFrom - lookAt).magnitude;
+        float aperture = 2.0f;
+
+        var myCamera = new MyCamera(lookFrom, lookAt, Vector3.up, 20.0f, (float)width / (float)height, aperture, distToFocus);
 
         for (int j = 0; j < height; ++j)
         {
